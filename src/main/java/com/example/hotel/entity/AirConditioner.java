@@ -1,9 +1,6 @@
 package com.example.hotel.entity;
 
-import lombok.Data;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -27,9 +24,10 @@ public class AirConditioner {
     private int serviceTime;             // 当前已服务时间（分钟）
     
     public enum Mode {
-        COOLING, HEATING;
+        COOLING, HEATING
     }
     
+    @Getter
     public enum FanSpeed {
         HIGH(1), MEDIUM(2), LOW(3);
         
@@ -38,11 +36,7 @@ public class AirConditioner {
         FanSpeed(int tempChangeTime) {
             this.tempChangeTime = tempChangeTime;
         }
-        
-        public int getTempChangeTime() {
-            return tempChangeTime;
-        }
-        
+
         public int getPriority() {
             return 3 - ordinal(); // HIGH=3, MEDIUM=2, LOW=1
         }
