@@ -1,4 +1,3 @@
-
 CREATE TABLE room (
     room_id INT PRIMARY KEY,
     price DECIMAL(10, 2) NOT NULL,
