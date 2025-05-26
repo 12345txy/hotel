@@ -42,7 +42,16 @@ public class RoomService {
             rooms.put(roomId, room);
         }
     }
-    
+    // 获取所有空闲房间的 roomId
+    public List<Integer> getAvailableRoomIds() {
+        List<Integer> availableRoomIds = new ArrayList<>();
+        for (Map.Entry<Integer, Room> entry : rooms.entrySet()) {
+            if (!entry.getValue().isOccupied()) {
+                availableRoomIds.add(entry.getKey());
+            }
+        }
+        return availableRoomIds;
+    }
     // 检查房间是否可用
     public boolean isRoomAvailable(Integer roomId) {
         Room room = rooms.get(roomId);

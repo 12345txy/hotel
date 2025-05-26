@@ -4,8 +4,8 @@ import com.example.hotel.entity.AirConditioner;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import jarkata.annotation.PostConstruct;
-import jarkata.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.Map;

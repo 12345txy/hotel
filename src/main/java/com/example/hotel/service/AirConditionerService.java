@@ -14,6 +14,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Service
 public class AirConditionerService {
@@ -156,9 +159,34 @@ public class AirConditionerService {
     
     // 获取房间账单明细
     public List<BillDetail> getRoomBillDetails(Integer roomId) {
-        return billDetails.getOrDefault(roomId, new ArrayList<>());
+        // 获取房间信息
+        Room room = roomService.getRoomById(roomId).orElse(null);
+        if (room == null || room.getCheckInTime() == null) {
+            return Collections.emptyList(); // 房间不存在或未入住，返回空列表
+        }
+
+        // 获取入住和退房时间
+        LocalDateTime checkInTime = room.getCheckInTime();
+        LocalDateTime checkOutTime = null;
+
+        // 如果退房时间为空（未退房），则使用当前时间作为结束时间
+        if (checkOutTime == null) {
+            checkOutTime = LocalDateTime.now();
+        } else {
+            checkOutTime = room.getCheckOutTime();
+        }
+
+        // 过滤符合条件的详单记录
+        LocalDateTime finalCheckOutTime = checkOutTime;
+        return billDetails.getOrDefault(roomId, new ArrayList<>())
+                .stream()
+                .filter(detail ->
+                        detail.getRequestTime() != null &&
+                                !detail.getRequestTime().isBefore(checkInTime) &&
+                                !detail.getRequestTime().isAfter(finalCheckOutTime)
+                )
+                .collect(Collectors.toList());
     }
-    
     // 设置服务开始时间
     public void setServiceStartTime(Integer roomId, LocalDateTime startTime) {
         AirConditioner ac = airConditioners.get(roomId);

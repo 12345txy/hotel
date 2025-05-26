@@ -5,8 +5,7 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
-import javax.persistence.Id;
-import javax.persistence.Table;
+import jakarta.persistence.*;
 
 @Data
 @Builder
@@ -18,4 +17,6 @@ public class Guest {
     private String id;        // 身份证号
     private String name;      // 姓名
     private String phone;     // 电话号码
+    @Transient  // 不保存到数据库
+    private Integer stayDays;
 } 
