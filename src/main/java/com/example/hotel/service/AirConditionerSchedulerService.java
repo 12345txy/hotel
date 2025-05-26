@@ -22,12 +22,7 @@ public class AirConditionerSchedulerService {
     private final RoomService roomService;
     
     // 等待队列（按优先级排序）
-    private final Queue<Integer> waitingQueue = new PriorityQueue<>(
-        Comparator.comparing(roomId -> {
-            AirConditioner ac = acService.getAirConditionerStatus(roomId);
-            return ac != null ? -ac.getPriority() : 0; // 负号使高优先级排在前面
-        })
-    );
+    private final Queue<Integer> waitingQueue;
     
     // 服务队列
     private final Queue<Integer> serviceQueue = new ConcurrentLinkedQueue<>();
@@ -37,11 +32,17 @@ public class AirConditionerSchedulerService {
     
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread schedulerThread;
-    
+
     @Autowired
     public AirConditionerSchedulerService(AirConditionerService acService, RoomService roomService) {
         this.acService = acService;
         this.roomService = roomService;
+        this.waitingQueue = new PriorityQueue<>(
+                Comparator.comparing(roomId -> {
+                    AirConditioner ac = acService.getAirConditionerStatus(roomId);
+                    return ac != null ? -ac.getPriority() : 0; // 负号使高优先级排在前面
+                })
+        );
     }
     
     @PostConstruct
