@@ -1,20 +1,16 @@
 package com.example.hotel.service;
 
 import com.example.hotel.entity.AirConditioner;
+import com.example.hotel.entity.AirConditionerRequest;
 import com.example.hotel.entity.BillDetail;
 import com.example.hotel.entity.Room;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -23,6 +19,7 @@ public class AirConditionerService {
     
     private final RoomService roomService;
     private final Map<Integer, AirConditioner> airConditioners = new ConcurrentHashMap<>();
+    private final Map<Integer, AirConditionerRequest> roomRequests = new ConcurrentHashMap<>();
     private final Map<Integer, List<BillDetail>> billDetails = new ConcurrentHashMap<>();
     
     // 空调参数
@@ -50,49 +47,37 @@ public class AirConditionerService {
         tempRanges.put(AirConditioner.Mode.COOLING, new double[]{18.0, 28.0});
         tempRanges.put(AirConditioner.Mode.HEATING, new double[]{18.0, 25.0});
         
-        // 初始化线程池 - 使用带有界队列的线程池
+        // 初始化线程池
         temperatureRecoveryExecutor = new ThreadPoolExecutor(
-            2,                       // 核心线程数
-            5,                       // 最大线程数
-            60, TimeUnit.SECONDS,    // 空闲线程存活时间
-            new LinkedBlockingQueue<>(10), // 有界工作队列
-            new ThreadPoolExecutor.CallerRunsPolicy() // 拒绝策略
+            2, 5, 60, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(10),
+            new ThreadPoolExecutor.CallerRunsPolicy()
         );
     }
     
     @PostConstruct
     public void init() {
-        // 初始化空调
-        for (Room room : roomService.getAllRooms()) {
+        // 初始化3台空调
+        for (int i = 1; i <= 3; i++) {
             AirConditioner ac = new AirConditioner();
-            ac.setRoomId(room.getRoomId());
+            ac.setAcId(i);
             ac.setOn(false);
-            ac.setCurrentTemp(room.getCurrentTemp());
-            airConditioners.put(room.getRoomId(), ac);
+            ac.setServingRoomId(null); // 初始不服务任何房间
+            airConditioners.put(i, ac);
+        }
+        
+        // 初始化房间相关数据
+        for (Room room : roomService.getAllRooms()) {
             billDetails.put(room.getRoomId(), new ArrayList<>());
             roomTemperatureLocks.put(room.getRoomId(), new Object());
         }
     }
     
-    @PreDestroy
-    public void destroy() {
-        // 关闭线程池
-        temperatureRecoveryExecutor.shutdown();
-        try {
-            if (!temperatureRecoveryExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                temperatureRecoveryExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            temperatureRecoveryExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-    
-    // 开启空调
-    public boolean turnOn(Integer roomId, AirConditioner.Mode mode, 
-                          AirConditioner.FanSpeed fanSpeed, double targetTemp) {
-        AirConditioner ac = airConditioners.get(roomId);
-        if (ac == null) {
+    // 创建空调请求
+    public boolean createRequest(Integer roomId, AirConditioner.Mode mode, 
+                               AirConditioner.FanSpeed fanSpeed, double targetTemp) {
+        Room room = roomService.getRoomById(roomId).orElse(null);
+        if (room == null) {
             return false;
         }
         
@@ -106,35 +91,67 @@ public class AirConditionerService {
                 targetTemp = defaultTargetTemp.get(mode);
             }
             
-            ac.setOn(true);
-            ac.setMode(mode);
-            ac.setFanSpeed(fanSpeed);
-            ac.setTargetTemp(targetTemp);
-            ac.setRequestTime(LocalDateTime.now());
-            ac.setPriority(fanSpeed.getPriority());
+            // 创建新请求
+            AirConditionerRequest request = new AirConditionerRequest();
+            request.setRoomId(roomId);
+            request.setMode(mode);
+            request.setFanSpeed(fanSpeed);
+            request.setTargetTemp(targetTemp);
+            request.setCurrentRoomTemp(room.getCurrentTemp());
+            request.setRequestTime(LocalDateTime.now());
+            request.setAssignedAcId(null);
+            request.setPriority(fanSpeed.getPriority());
+            request.setActive(true);
+            
+            roomRequests.put(roomId, request);
         }
         
         return true;
     }
     
-    // 关闭空调
-    public boolean turnOff(Integer roomId) {
-        AirConditioner ac = airConditioners.get(roomId);
-        if (ac == null || !ac.isOn()) {
+    // 取消空调请求
+    public boolean cancelRequest(Integer roomId) {
+        AirConditionerRequest request = roomRequests.get(roomId);
+        if (request == null || !request.isActive()) {
             return false;
         }
         
         synchronized (roomTemperatureLocks.getOrDefault(roomId, new Object())) {
-            ac.setOn(false);
-            ac.setServiceEndTime(LocalDateTime.now());
+            // 请求已分配空调，需要释放空调
+            if (request.getAssignedAcId() != null) {
+                AirConditioner ac = airConditioners.get(request.getAssignedAcId());
+                if (ac != null) {
+                    // 记录空调使用账单
+                    recordAcUsage(ac, roomId);
+                    
+                    // 释放空调
+                    ac.setOn(false);
+                    ac.setServingRoomId(null);
+                    ac.setServiceEndTime(LocalDateTime.now());
+                }
+            }
             
-            // 计算费用并创建账单明细
-            if (ac.getServiceStartTime() != null) {
-                int duration = (int) Duration.between(ac.getServiceStartTime(), ac.getServiceEndTime()).toMinutes();
-                ac.setServiceDuration(duration);
-                
-                // 根据风速和持续时间计算费用
-                double tempChange = Math.abs(ac.getTargetTemp() - ac.getCurrentTemp());
+            // 标记请求为非活动
+            request.setActive(false);
+            request.setAssignedAcId(null);
+            
+            // 启动回温过程
+            startRoomTemperatureRecovery(roomId);
+        }
+        
+        return true;
+    }
+    
+    // 记录空调使用账单
+    private void recordAcUsage(AirConditioner ac, Integer roomId) {
+        if (ac.getServiceStartTime() != null) {
+            int duration = (int) Duration.between(ac.getServiceStartTime(), LocalDateTime.now()).toMinutes();
+            ac.setServiceDuration(duration);
+            
+            // 根据风速和持续时间计算费用
+            Room room = roomService.getRoomById(roomId).orElse(null);
+            if (room != null) {
+                double tempChange = Math.abs(ac.getTargetTemp() - room.getCurrentTemp());
                 int tempChangeTime = ac.getFanSpeed().getTempChangeTime();
                 double energyUsed = tempChange / tempChangeTime;
                 double cost = energyUsed * priceRate;
@@ -145,7 +162,7 @@ public class AirConditionerService {
                     .roomId(roomId)
                     .requestTime(ac.getRequestTime())
                     .serviceStartTime(ac.getServiceStartTime())
-                    .serviceEndTime(ac.getServiceEndTime())
+                    .serviceEndTime(LocalDateTime.now())
                     .serviceDuration(duration)
                     .fanSpeed(ac.getFanSpeed())
                     .cost(cost)
@@ -154,12 +171,66 @@ public class AirConditionerService {
                 
                 billDetails.get(roomId).add(detail);
             }
-            
-            // 启动回温过程
-            startRoomTemperatureRecovery(roomId);
+        }
+    }
+    
+    // 分配空调给房间
+    public boolean assignAirConditioner(Integer roomId, Integer acId) {
+        AirConditionerRequest request = roomRequests.get(roomId);
+        AirConditioner ac = airConditioners.get(acId);
+        
+        if (request == null || !request.isActive() || ac == null || ac.getServingRoomId() != null) {
+            return false;
         }
         
+        // 配置空调
+        ac.setOn(true);
+        ac.setServingRoomId(roomId);
+        ac.setMode(request.getMode());
+        ac.setFanSpeed(request.getFanSpeed());
+        ac.setTargetTemp(request.getTargetTemp());
+        ac.setCurrentTemp(request.getCurrentRoomTemp());
+        ac.setRequestTime(request.getRequestTime());
+        ac.setServiceStartTime(LocalDateTime.now());
+        ac.setPriority(request.getPriority());
+        
+        // 更新请求
+        request.setAssignedAcId(acId);
+        
         return true;
+    }
+    
+    // 获取可用空调ID
+    public List<Integer> getAvailableAirConditioners() {
+        List<Integer> available = new ArrayList<>();
+        for (Map.Entry<Integer, AirConditioner> entry : airConditioners.entrySet()) {
+            if (entry.getValue().getServingRoomId() == null) {
+                available.add(entry.getKey());
+            }
+        }
+        return available;
+    }
+    
+    // 获取所有空调
+    public List<AirConditioner> getAllAirConditioners() {
+        return new ArrayList<>(airConditioners.values());
+    }
+    
+    // 获取指定空调
+    public AirConditioner getAirConditioner(Integer acId) {
+        return airConditioners.get(acId);
+    }
+    
+    // 获取房间请求
+    public AirConditionerRequest getRoomRequest(Integer roomId) {
+        return roomRequests.get(roomId);
+    }
+    
+    // 获取所有活跃请求
+    public List<AirConditionerRequest> getAllActiveRequests() {
+        return roomRequests.values().stream()
+                .filter(AirConditionerRequest::isActive)
+                .toList();
     }
     
     // 取消房间回温任务

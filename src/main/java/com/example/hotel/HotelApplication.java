@@ -8,7 +8,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class HotelApplication {
 
+	// 主方法
 	public static void main(String[] args) {
+		// 运行SpringApplication，并传入HotelApplication类和args参数
 		SpringApplication.run(HotelApplication.class, args);
 	}
 

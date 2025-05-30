@@ -16,7 +16,6 @@ public class CheckInController {
     private final CheckInService checkInService;
     private final RoomService roomService;
 
-    @Autowired
     public CheckInController(CheckInService checkInService, RoomService roomService) {
         this.checkInService = checkInService;
         this.roomService = roomService;

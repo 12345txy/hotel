@@ -9,7 +9,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AirConditioner {
-    private Integer roomId;              // 对应房间号
+    private Integer acId;                // 空调ID（1-3）
+    private Integer servingRoomId;       // 当前服务的房间ID，null表示空闲
     private boolean on;                  // 是否开启
     private Mode mode;                   // 模式：制热/制冷
     private FanSpeed fanSpeed;           // 风速：高/中/低
