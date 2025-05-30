@@ -1,7 +1,6 @@
 package com.example.hotel.service;
 
 import com.example.hotel.entity.AirConditioner;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
@@ -33,7 +32,7 @@ public class AirConditionerSchedulerService {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread schedulerThread;
 
-    @Autowired
+
     public AirConditionerSchedulerService(AirConditionerService acService, RoomService roomService) {
         this.acService = acService;
         this.roomService = roomService;
