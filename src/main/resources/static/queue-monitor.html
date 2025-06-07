@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空调调度队列监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .status-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .status-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .status-card h3 {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-card .number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .queue-section {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .queue-header {
+            padding: 20px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: white;
+        }
+
+        .service-queue .queue-header {
+            background: linear-gradient(135deg, #FF6B6B 0%, #FF5722 100%);
+        }
+
+        .waiting-queue .queue-header {
+            background: linear-gradient(135deg, #4ECDC4 0%, #44A08D 100%);
+        }
+
+        .queue-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .queue-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.3s ease;
+        }
+
+        .queue-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .queue-item:last-child {
+            border-bottom: none;
+        }
+
+        .room-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .room-number {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .room-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status-serving {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-waiting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .room-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .ac-section {
+            grid-column: 1 / -1;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-top: 30px;
+        }
+
+        .ac-header {
+            background: linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%);
+            color: white;
+            padding: 20px;
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .ac-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+
+        .ac-card {
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+            transition: all 0.3s ease;
+        }
+
+        .ac-card.active {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+
+        .ac-card.inactive {
+            border-color: #6c757d;
+            background: #e9ecef;
+        }
+
+        .ac-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .ac-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+
+        .refresh-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            padding: 15px 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+
+        .refresh-button:hover {
+            transform: scale(1.05);
+        }
+
+        .empty-queue {
+            padding: 40px;
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .priority-badge {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: #721c24;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .time-badge {
+            background: #17a2b8;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .status-summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .ac-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌡️ 空调调度队列监控系统</h1>
+            <p>实时监控空调服务队列和等待队列状态</p>
+        </div>
+
+        <div class="status-summary">
+            <div class="status-card">
+                <h3>总请求数</h3>
+                <div class="number" id="totalRequests">0</div>
+            </div>
+            <div class="status-card">
+                <h3>服务中</h3>
+                <div class="number" id="serviceCount" style="color: #FF6B6B;">0</div>
+            </div>
+            <div class="status-card">
+                <h3>等待中</h3>
+                <div class="number" id="waitingCount" style="color: #4ECDC4;">0</div>
+            </div>
+            <div class="status-card">
+                <h3>最后更新</h3>
+                <div class="number" id="lastUpdate" style="font-size: 1rem; color: #666;">--:--</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="queue-section service-queue">
+                <div class="queue-header">
+                    🔥 服务队列 (正在服务中)
+                </div>
+                <div class="queue-content" id="serviceQueue">
+                    <div class="empty-queue">暂无服务中的请求</div>
+                </div>
+            </div>
+
+            <div class="queue-section waiting-queue">
+                <div class="queue-header">
+                    ⏳ 等待队列 (按优先级排序)
+                </div>
+                <div class="queue-content" id="waitingQueue">
+                    <div class="empty-queue">暂无等待中的请求</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ac-section">
+            <div class="ac-header">
+                ❄️ 空调设备状态
+            </div>
+            <div class="ac-grid" id="airConditioners">
+                <!-- 空调状态将动态加载 -->
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-button" onclick="loadQueueStatus()">
+        🔄 刷新数据
+    </button>
+
+    <script>
+        // 加载队列状态
+        async function loadQueueStatus() {
+            try {
+                const response = await fetch('/api/ac/queue/status');
+                const data = await response.json();
+                
+                updateStatusSummary(data);
+                updateServiceQueue(data.serviceQueue);
+                updateWaitingQueue(data.waitingQueue);
+                updateAirConditioners(data.airConditioners);
+                
+            } catch (error) {
+                console.error('Failed to load queue status:', error);
+            }
+        }
+
+        // 更新状态摘要
+        function updateStatusSummary(data) {
+            document.getElementById('totalRequests').textContent = data.totalRequests;
+            document.getElementById('serviceCount').textContent = data.serviceCount;
+            document.getElementById('waitingCount').textContent = data.waitingCount;
+            
+            const timestamp = new Date(data.timestamp);
+            document.getElementById('lastUpdate').textContent = 
+                timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // 更新服务队列
+        function updateServiceQueue(serviceQueue) {
+            const container = document.getElementById('serviceQueue');
+            
+            if (serviceQueue.length === 0) {
+                container.innerHTML = '<div class="empty-queue">暂无服务中的请求</div>';
+                return;
+            }
+
+            container.innerHTML = serviceQueue.map(item => `
+                <div class="queue-item">
+                    <div class="room-info">
+                        <span class="room-number">房间 ${item.roomId}</span>
+                        <div>
+                            <span class="room-status status-serving">${item.status}</span>
+                            <span class="priority-badge">优先级 ${item.priority}</span>
+                            <span class="time-badge">已服务 ${item.serviceTime || 0}分钟</span>
+                        </div>
+                    </div>
+                    <div class="room-details">
+                        <div class="detail-item">
+                            <span>分配空调:</span>
+                            <span>AC-${item.assignedAcId}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>模式:</span>
+                            <span>${item.mode === 'COOLING' ? '制冷' : '制热'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>风速:</span>
+                            <span>${getFanSpeedText(item.fanSpeed)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>目标温度:</span>
+                            <span>${item.targetTemp}°C</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>当前温度:</span>
+                            <span>${item.currentRoomTemp}°C</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>请求时间:</span>
+                            <span>${new Date(item.requestTime).toLocaleTimeString('zh-CN')}</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新等待队列
+        function updateWaitingQueue(waitingQueue) {
+            const container = document.getElementById('waitingQueue');
+            
+            if (waitingQueue.length === 0) {
+                container.innerHTML = '<div class="empty-queue">暂无等待中的请求</div>';
+                return;
+            }
+
+            container.innerHTML = waitingQueue.map((item, index) => `
+                <div class="queue-item">
+                    <div class="room-info">
+                        <span class="room-number">房间 ${item.roomId}</span>
+                        <div>
+                            <span class="room-status status-waiting">${item.status}</span>
+                            <span class="priority-badge">优先级 ${item.priority}</span>
+                            <span class="time-badge">排队第 ${index + 1} 位</span>
+                        </div>
+                    </div>
+                    <div class="room-details">
+                        <div class="detail-item">
+                            <span>模式:</span>
+                            <span>${item.mode === 'COOLING' ? '制冷' : '制热'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>风速:</span>
+                            <span>${getFanSpeedText(item.fanSpeed)}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>目标温度:</span>
+                            <span>${item.targetTemp}°C</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>当前温度:</span>
+                            <span>${item.currentRoomTemp}°C</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>请求时间:</span>
+                            <span>${new Date(item.requestTime).toLocaleTimeString('zh-CN')}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>等待时长:</span>
+                            <span>${item.waitingTime || 0}分钟</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新空调状态
+        function updateAirConditioners(airConditioners) {
+            const container = document.getElementById('airConditioners');
+            
+            container.innerHTML = airConditioners.map(ac => `
+                <div class="ac-card ${ac.isOn ? 'active' : 'inactive'}">
+                    <div class="ac-title">
+                        空调 AC-${ac.acId} ${ac.isOn ? '🟢 运行中' : '🔴 空闲'}
+                    </div>
+                    <div class="ac-details">
+                        <div class="detail-item">
+                            <span>服务房间:</span>
+                            <span>${ac.servingRoomId ? `房间 ${ac.servingRoomId}` : '无'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>运行时长:</span>
+                            <span>${ac.serviceTime || 0} 分钟</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>工作模式:</span>
+                            <span>${ac.mode ? (ac.mode === 'COOLING' ? '制冷' : '制热') : '无'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>风速:</span>
+                            <span>${ac.fanSpeed ? getFanSpeedText(ac.fanSpeed) : '无'}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>目标温度:</span>
+                            <span>${ac.targetTemp || '--'}°C</span>
+                        </div>
+                        <div class="detail-item">
+                            <span>当前温度:</span>
+                            <span>${ac.currentTemp || '--'}°C</span>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 获取风速文本
+        function getFanSpeedText(fanSpeed) {
+            switch(fanSpeed) {
+                case 'HIGH': return '高风';
+                case 'MEDIUM': return '中风';
+                case 'LOW': return '低风';
+                default: return fanSpeed;
+            }
+        }
+
+        // 计算等待时长
+        function getWaitingTime(requestTime) {
+            const now = new Date();
+            const request = new Date(requestTime);
+            const diffMinutes = Math.floor((now - request) / (1000 * 60));
+            
+            if (diffMinutes < 1) return '刚刚';
+            if (diffMinutes < 60) return `${diffMinutes}分钟`;
+            
+            const hours = Math.floor(diffMinutes / 60);
+            const minutes = diffMinutes % 60;
+            return `${hours}小时${minutes}分钟`;
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadQueueStatus();
+            
+            // 每1秒自动刷新，方便实时监控
+            setInterval(loadQueueStatus, 1000);
+        });
+    </script>
+</body>
+</html> 

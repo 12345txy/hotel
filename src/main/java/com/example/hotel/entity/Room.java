@@ -25,6 +25,9 @@ public class Room {
     private LocalDateTime checkInTime; // 入住时间
     private LocalDateTime checkOutTime; // 退房时间
     
+    @Column(name = "assigned_ac_id")
+    private Integer assignedAcId;     // 分配的空调ID，null表示未分配空调
+    
     @Transient  // 不保存到数据库
     private Guest guest;              // 入住客人信息
 } 

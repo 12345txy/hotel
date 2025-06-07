@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 
 import jakarta.persistence.*;
 
+@Entity
 @Data
 @Builder
 @NoArgsConstructor
@@ -14,6 +15,7 @@ import jakarta.persistence.*;
 @Table(name = "guest")
 public class Guest {
     @Id
+    @Column(length = 50)
     private String id;        // 身份证号
     private String name;      // 姓名
     private String phone;     // 电话号码

@@ -3,10 +3,12 @@ package com.example.hotel.service;
 import com.example.hotel.entity.Bill;
 import com.example.hotel.entity.BillDetail;
 import com.example.hotel.entity.Room;
+import com.example.hotel.repository.BillDetailRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -14,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -22,12 +25,15 @@ public class BillingService {
 
     private final RoomService roomService;
     private final AirConditionerService acService;
+    private final BillDetailRepository billDetailRepository;
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired
-    public BillingService(RoomService roomService, AirConditionerService acService) {
+    public BillingService(RoomService roomService, AirConditionerService acService, 
+                         BillDetailRepository billDetailRepository) {
         this.roomService = roomService;
         this.acService = acService;
+        this.billDetailRepository = billDetailRepository;
     }
     // 生成账单
     public Bill generateBill(Integer roomId) {
@@ -142,5 +148,117 @@ public class BillingService {
         workbook.close();
 
         return fileName;
+    }
+
+    /**
+     * 保存账单详单到数据库
+     */
+    @Transactional
+    public BillDetail saveBillDetail(BillDetail billDetail) {
+        // 设置创建时间
+        if (billDetail.getCreatedAt() == null) {
+            billDetail.setCreatedAt(LocalDateTime.now());
+        }
+        return billDetailRepository.save(billDetail);
+    }
+
+    /**
+     * 批量保存账单详单
+     */
+    @Transactional
+    public List<BillDetail> saveBillDetails(List<BillDetail> billDetails) {
+        // 为每个详单设置创建时间
+        billDetails.forEach(detail -> {
+            if (detail.getCreatedAt() == null) {
+                detail.setCreatedAt(LocalDateTime.now());
+            }
+        });
+        return billDetailRepository.saveAll(billDetails);
+    }
+
+    /**
+     * 根据账单ID获取详单列表
+     */
+    public List<BillDetail> getBillDetailsByBillId(Long billId) {
+        return billDetailRepository.findByBillId(billId);
+    }
+
+    /**
+     * 根据房间号获取详单列表
+     */
+    public List<BillDetail> getBillDetailsByRoomId(Integer roomId) {
+        return billDetailRepository.findByRoomId(roomId);
+    }
+
+    /**
+     * 更新详单的服务结束时间和费用
+     */
+    @Transactional
+    public BillDetail updateBillDetailServiceEnd(Long detailId, LocalDateTime endTime, 
+                                                double cost, double energyConsumed) {
+        BillDetail detail = billDetailRepository.findById(detailId).orElse(null);
+        if (detail != null) {
+            detail.setServiceEndTime(endTime);
+            detail.setCost(cost);
+            detail.setEnergyConsumed(energyConsumed);
+            
+            // 计算服务时长
+            if (detail.getServiceStartTime() != null && endTime != null) {
+                Duration duration = Duration.between(detail.getServiceStartTime(), endTime);
+                detail.setServiceDuration((int) duration.toMinutes());
+            }
+            
+            return billDetailRepository.save(detail);
+        }
+        return null;
+    }
+
+    /**
+     * 查询房间的活跃服务详单（未结束的服务）
+     */
+    public List<BillDetail> getActiveServicesByRoomId(Integer roomId) {
+        return billDetailRepository.findActiveServicesByRoomId(roomId);
+    }
+
+    /**
+     * 统计房间的总费用
+     */
+    public Double getTotalCostByRoomId(Integer roomId) {
+        return billDetailRepository.sumCostByRoomId(roomId);
+    }
+
+    /**
+     * 统计房间在指定时间范围的能耗
+     */
+    public Double getEnergyConsumedByRoomAndTimeRange(Integer roomId, 
+                                                     LocalDateTime startTime, 
+                                                     LocalDateTime endTime) {
+        return billDetailRepository.sumEnergyConsumedByRoomAndTimeRange(roomId, startTime, endTime);
+    }
+
+    /**
+     * 创建新的账单详单记录
+     */
+    @Transactional
+    public BillDetail createBillDetail(Long billId, Integer roomId, Integer acId,
+                                      LocalDateTime requestTime, LocalDateTime serviceStartTime,
+                                      String fanSpeed, String mode, double targetTemp, double rate) {
+        BillDetail detail = BillDetail.builder()
+                .billId(billId)
+                .roomId(roomId)
+                .acId(acId)
+                .requestTime(requestTime)
+                .serviceStartTime(serviceStartTime)
+                .fanSpeed(com.example.hotel.entity.AirConditioner.FanSpeed.valueOf(fanSpeed))
+                .mode(com.example.hotel.entity.AirConditioner.Mode.valueOf(mode))
+                .targetTemp(targetTemp)
+                .rate(rate)
+                .cost(0.0)
+                .energyConsumed(0.0)
+                .serviceDuration(0)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        return billDetailRepository.save(detail);
     }
 }
